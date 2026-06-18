@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/stocks.db
+data/forecasts/
+logs/
+*.log
+*.db
+check_db.py
+check_env.py
+test_connection.py
