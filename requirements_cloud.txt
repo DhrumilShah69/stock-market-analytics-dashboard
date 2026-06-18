@@ -1,0 +1,10 @@
+pandas
+numpy
+sqlalchemy
+python-dotenv
+streamlit
+plotly
+textblob
+requests
+prophet
+pyarrow

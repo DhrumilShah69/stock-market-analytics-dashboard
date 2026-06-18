@@ -45,28 +45,67 @@ def fetch_historical(obj, stock_name, token, days=60):
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     return df
 
+def fetch_historical_full(obj, stock_name, token, total_days=365, chunk_days=50):
+    all_dfs = []
+    end = datetime.now()
+    remaining = total_days
+
+    while remaining > 0:
+        days = min(chunk_days, remaining)
+        start = end - timedelta(days=days)
+
+        params = {
+            "exchange": "NSE",
+            "symboltoken": token,
+            "interval": "FIVE_MINUTE",
+            "fromdate": start.strftime("%Y-%m-%d %H:%M"),
+            "todate": end.strftime("%Y-%m-%d %H:%M")
+        }
+
+        try:
+            data = obj.getCandleData(params)
+            df = pd.DataFrame(data["data"],
+                              columns=["timestamp", "open", "high",
+                                       "low", "close", "volume"])
+            df["stock"] = stock_name
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            all_dfs.append(df)
+            print(f"  Fetched {len(df)} rows "
+                  f"({start.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')})")
+        except Exception as e:
+            print(f"  Error fetching chunk: {e}")
+
+        end = start
+        remaining -= chunk_days
+
+    if all_dfs:
+        combined = pd.concat(all_dfs).drop_duplicates(subset="timestamp")
+        combined = combined.sort_values("timestamp").reset_index(drop=True)
+        return combined
+    return pd.DataFrame()
+
 if __name__ == "__main__":
     from features import add_all_features
     from database import init_db, save_historical, save_live_quote
 
-    # Initialize database
     init_db()
-
-    # Login
     session = get_session()
 
-    # Fetch and save live quotes
+    # Fetch live quotes
     print("Fetching live quotes...")
     live_df = fetch_live_quote(session)
     save_live_quote(live_df)
     print(live_df)
 
-    # Fetch historical + features for all 5 stocks and save
+    # Fetch 1 year of historical data in chunks
     for stock_name, token in STOCKS.items():
-        print(f"\nProcessing {stock_name}...")
-        hist_df = fetch_historical(session, stock_name, token, days=60)
-        hist_df = add_all_features(hist_df)
-        hist_df = hist_df.dropna()  # remove rows with NaN from indicator calculations
-        save_historical(hist_df)
+        print(f"\nFetching full history for {stock_name}...")
+        hist_df = fetch_historical_full(session, stock_name, token,
+                                        total_days=365, chunk_days=50)
+        if not hist_df.empty:
+            hist_df = add_all_features(hist_df)
+            hist_df = hist_df.dropna()
+            save_historical(hist_df)
+            print(f"  ✅ Saved {len(hist_df)} rows for {stock_name}")
 
     print("\n✅ Full pipeline complete — all data saved to database!")
